@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "131409686663",
+    "project_id": "lyfe-14ae2",
+    "storage_bucket": "lyfe-14ae2.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:131409686663:android:ce943d29ec6c2218c20822",
+        "android_client_info": {
+          "package_name": "babayah.com.example.unimatch"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBSL5rHLlqAvcg3rZJMMug-QFuIPFM-y8E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
