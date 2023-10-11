@@ -1,6 +1,19 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'firebase_helper.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+Future<String> getAnonymousUserID() async {
+  SharedPreferences prefs = await SharedPreferences.getInstance();
+  String? userID = prefs.getString('anonymousUserID');
+
+  if (userID == null) {
+    userID = DateTime.now().millisecondsSinceEpoch.toString(); // Generating a unique ID based on current time
+    await prefs.setString('anonymousUserID', userID);
+  }
+
+  return userID;
+}
 
 // Function to add a forum post to the database
 Future<String?> addForumPost(String userId, Map<String, dynamic> postData) async {
@@ -31,6 +44,7 @@ Future<String?> addForumPost(String userId, Map<String, dynamic> postData) async
       'description': postData['description'],
       'images': imageUrls,
       'tags': postData['tags'],
+      'votes': 0, // Initialize votes to 0
       'createdAt': FieldValue.serverTimestamp(),
     });
 

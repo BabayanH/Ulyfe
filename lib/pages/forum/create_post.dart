@@ -1,7 +1,6 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart'; // Import image_picker
+import 'package:image_picker/image_picker.dart';
 import '../../firebase_functions.dart';
 
 class CreatePost extends StatefulWidget {
@@ -16,6 +15,7 @@ class _CreatePostState extends State<CreatePost> {
   XFile? _image;
 
   final ImagePicker _picker = ImagePicker();
+
 
   _pickImage({bool useCamera = false}) async {
     XFile? selectedImage = await _picker.pickImage(
@@ -73,48 +73,74 @@ class _CreatePostState extends State<CreatePost> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          TextField(
-            controller: _forumTitleController,
-            decoration: InputDecoration(labelText: 'Forum Title'),
-          ),
-          TextField(
-            controller: _descriptionController,
-            decoration: InputDecoration(labelText: 'Description'),
-          ),
-          TextField(
-            controller: _tagsController,
-            decoration: InputDecoration(labelText: 'Tags (comma separated)'),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              IconButton(
-                icon: Icon(Icons.photo),
-                onPressed: () => _pickImage(),
-                tooltip: 'Select image from gallery',
+    return Scaffold(
+      // appBar: AppBar(
+      //   title: Text("Create Post"),
+      //   centerTitle: true,
+      // ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(20.0),
+        child: Column(
+          children: [
+            TextFormField(
+              controller: _forumTitleController,
+              decoration: InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Forum Title',
               ),
-              IconButton(
-                icon: Icon(Icons.camera_alt),
-                onPressed: () => _pickImage(useCamera: true),
-                tooltip: 'Capture image with camera',
-              ),
-            ],
-          ),
-          if (_image != null)
-            Image.file(
-              File(_image!.path),
-              height: 200,
-              width: double.infinity,
-              fit: BoxFit.cover,
             ),
-          ElevatedButton(
-            onPressed: _handleSubmit,
-            child: Text('Submit'),
-          ),
-        ],
+            SizedBox(height: 20),
+            TextFormField(
+              controller: _descriptionController,
+              maxLines: 5,
+              decoration: InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Description',
+              ),
+            ),
+            SizedBox(height: 20),
+            TextFormField(
+              controller: _tagsController,
+              decoration: InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Tags (comma separated)',
+                helperText: 'Enter related tags, separated by commas',
+              ),
+            ),
+            SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () => _pickImage(),
+                  icon: Icon(Icons.photo),
+                  label: Text('Select from Gallery'),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () => _pickImage(useCamera: true),
+                  icon: Icon(Icons.camera_alt),
+                  label: Text('Use Camera'),
+                ),
+              ],
+            ),
+            SizedBox(height: 20),
+            if (_image != null)
+              Image.file(
+                File(_image!.path),
+                height: 200,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
+            SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: _handleSubmit,
+              child: Text('Submit'),
+              style: ElevatedButton.styleFrom(
+                minimumSize: Size(double.infinity, 50), // double.infinity means it takes full width
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

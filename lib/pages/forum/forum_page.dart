@@ -86,12 +86,12 @@ class _ForumPageState extends State<ForumPage> {
       ),
       body: _showCreatePost ? CreatePost() : ForumFeed(),
       drawer: buildDrawer(),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // Handle FAB press
-        },
-        child: Icon(Icons.chat),
-      ),
+      // floatingActionButton: FloatingActionButton(
+      //   onPressed: () {
+      //     // Handle FAB press
+      //   },
+      //   child: Icon(Icons.chat),
+      // ),
     );
   }
 

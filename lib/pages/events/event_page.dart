@@ -1,4 +1,6 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../../firebase_helper.dart';
 import 'event.dart';
 import 'event_details_page.dart';
 
@@ -9,27 +11,37 @@ class EventsPage extends StatefulWidget {
 
 class _EventsPageState extends State<EventsPage> {
   final TextEditingController _searchController = TextEditingController();
-  final List<Event> events = [
-    Event(
-      id: 1,
-      title: 'Event 1',
-      date: 'September 30, 2023',
-      price: '10',
-      location: 'On Campus',
-      thumbnail: 'https://via.placeholder.com/100',
-      description: 'Description for Event 1',
-    ),
-    Event(
-      id: 2,
-      title: 'Event 2',
-      date: 'October 15, 2023',
-      price: '15',
-      location: 'Off Campus',
-      thumbnail: 'https://via.placeholder.com/100',
-      description: 'Description for Event 2',
-    ),
-    // ... add more events as needed
-  ];
+  List<Event> _events = [];
+  String? _selectedPrice;
+  String? _selectedLocation;
+  String? _selectedEventType;
+
+  Future<List<Event>> _fetchEvents({String? searchKeyword}) async {
+    List<Event> eventsList = [];
+    Query eventsQuery = db.collection('events');
+
+    if (searchKeyword != null && searchKeyword.isNotEmpty) {
+      eventsQuery = eventsQuery
+          .where('title', isGreaterThanOrEqualTo: searchKeyword)
+          .where('title', isLessThan: searchKeyword + 'z');
+    }
+
+    QuerySnapshot eventsSnapshot = await eventsQuery.get();
+    for (var eventDoc in eventsSnapshot.docs) {
+      eventsList.add(Event(
+        id: eventDoc.id.hashCode,
+        title: eventDoc['title'],
+        date: eventDoc['date'],
+        time: eventDoc['time'],
+        price: eventDoc['price'],
+        location: eventDoc['location'],
+        thumbnail: eventDoc['thumbnail'],
+        description: eventDoc['description'],
+      ));
+    }
+
+    return eventsList;
+  }
 
   void _showFilterDialog() {
     showDialog(
@@ -40,38 +52,50 @@ class _EventsPageState extends State<EventsPage> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Price Filters
               DropdownButton<String>(
                 hint: Text('Price'),
+                value: _selectedPrice,
                 items: ['Free', '0-20', '>20'].map((String value) {
                   return DropdownMenuItem<String>(
                     value: value,
                     child: Text(value),
                   );
                 }).toList(),
-                onChanged: (_) {},
+                onChanged: (value) {
+                  setState(() {
+                    _selectedPrice = value;
+                  });
+                },
               ),
-              // Location Filters
               DropdownButton<String>(
                 hint: Text('Location'),
+                value: _selectedLocation,
                 items: ['On Campus', 'Off Campus'].map((String value) {
                   return DropdownMenuItem<String>(
                     value: value,
                     child: Text(value),
                   );
                 }).toList(),
-                onChanged: (_) {},
+                onChanged: (value) {
+                  setState(() {
+                    _selectedLocation = value;
+                  });
+                },
               ),
-              // Event Type Filters
               DropdownButton<String>(
                 hint: Text('Event Type'),
+                value: _selectedEventType,
                 items: ['Party', 'Club'].map((String value) {
                   return DropdownMenuItem<String>(
                     value: value,
                     child: Text(value),
                   );
                 }).toList(),
-                onChanged: (_) {},
+                onChanged: (value) {
+                  setState(() {
+                    _selectedEventType = value;
+                  });
+                },
               ),
             ],
           ),
@@ -81,7 +105,11 @@ class _EventsPageState extends State<EventsPage> {
               child: Text('Cancel'),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                setState(() {
+                  Navigator.pop(context);
+                });
+              },
               child: Text('Apply'),
             ),
           ],
@@ -91,78 +119,99 @@ class _EventsPageState extends State<EventsPage> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _fetchEvents().then((events) => setState(() {
+          _events = events;
+        }));
+
+    _searchController.addListener(() {
+      _fetchEvents(searchKeyword: _searchController.text)
+          .then((events) => setState(() {
+                _events = events;
+              }));
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Color(0xFF0557fa),
-        title: TextField(
-          controller: _searchController,
-
-          decoration: InputDecoration(
-            hintText: 'Search Events',
-            hintStyle: TextStyle(color: Colors.white),
-            prefixIcon: Icon(Icons.search, color: Colors.white,),
-          ),
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.filter_list),
-            onPressed: _showFilterDialog,
-          ),
-        ],
-      ),
-      body: ListView.builder(
-        itemCount: events.length,
-        itemBuilder: (context, index) {
-          final event = events[index];
-          return Card(
-            margin: EdgeInsets.all(10.0),
-            child: InkWell(
-              onTap: () {
-                // Handle tap
-              },
-              child: Container(
-                padding: EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            image: DecorationImage(
-                              image: NetworkImage(event.thumbnail),
-                              fit: BoxFit.cover,
-                            ),
-                            borderRadius: BorderRadius.circular(4.0),
-                          ),
-                        ),
-                        SizedBox(width: 16.0),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(event.title,
-                                  style: TextStyle(
-                                      fontSize: 18.0,
-                                      fontWeight: FontWeight.bold)),
-                              SizedBox(height: 8.0),
-                              Text(event.date),
-                              Text(event.location),
-                            ],
-                          ),
-                        ),
-                        Text('\$${event.price}'),
-                      ],
-                    ),
-                  ],
-                ),
+        appBar: AppBar(
+          backgroundColor: Color(0xFF0557fa),
+          title: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Search Events',
+              hintStyle: TextStyle(color: Colors.white),
+              prefixIcon: Icon(
+                Icons.search,
+                color: Colors.white,
               ),
             ),
-          );
-        },
-      ),
-    );
+            style: TextStyle(color: Colors.white),
+
+          ),
+          actions: [
+            IconButton(
+              icon: Icon(Icons.filter_list),
+              onPressed: _showFilterDialog,
+            ),
+          ],
+        ),
+        body: ListView.builder(
+            itemCount: _events.length,
+            itemBuilder: (context, index) {
+              final event = _events[index];
+              return Card(
+                  margin: EdgeInsets.all(10.0),
+                  child: InkWell(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => EventDetailsPage(event: event),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      padding: EdgeInsets.all(16.0),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 80,
+                                height: 80,
+                                decoration: BoxDecoration(
+                                  image: DecorationImage(
+                                    image: NetworkImage(event.thumbnail),
+                                    fit: BoxFit.cover,
+                                  ),
+                                  borderRadius: BorderRadius.circular(4.0),
+                                ),
+                              ),
+                              SizedBox(width: 16.0),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(event.title,
+                                        style: TextStyle(
+                                            fontSize: 18.0,
+                                            fontWeight: FontWeight.bold)),
+                                    SizedBox(height: 8.0),
+                                    Text(event.date),
+                                    Text(event.location),
+                                  ],
+                                ),
+                              ),
+                              Text('\$${event.price}'),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ));
+            }));
   }
 }
