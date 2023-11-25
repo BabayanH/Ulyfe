@@ -54,5 +54,57 @@ Future<String?> addForumPost(String userId, Map<String, dynamic> postData) async
     return null;
   }
 }
+// Function to add an event to the database
+Future<String?> addEvent(Map<String, dynamic> eventData) async {
+  try {
+    CollectionReference eventsCollection = db.collection("events");
+
+    // Upload thumbnail to Firebase Storage and get its download URL
+    String fileNameThumbnail = eventData['thumbnail'].path.split('/').last;
+    Reference thumbnailStorageRef = storage.ref().child('eventImages/$fileNameThumbnail');
+
+    // Upload the thumbnail image file
+    await thumbnailStorageRef.putFile(eventData['thumbnail']);
+
+    // Get the download URL of the uploaded thumbnail image
+    String thumbnailUrl = await thumbnailStorageRef.getDownloadURL();
+
+    // Upload other images to Firebase Storage and get their download URLs
+    List<String> imageUrls = [];
+    for (var imageFile in eventData['images']) {
+
+      // Extract the file name from the path
+      String fileName = imageFile.path.split('/').last;
+      Reference storageRef = storage.ref().child('eventImages/$fileName');
+
+      // Upload the image file
+      await storageRef.putFile(imageFile);
+
+      // Get the download URL of the uploaded image
+      String imageUrl = await storageRef.getDownloadURL();
+      imageUrls.add(imageUrl);
+    }
+
+    // Create a new event document
+    DocumentReference newEventRef = await eventsCollection.add({
+      'title': eventData['title'],
+      'description': eventData['description'],
+      'date': eventData['date'],
+      'time': eventData['time'],
+      'location': eventData['location'],
+      'price': eventData['price'],
+      'thumbnail': thumbnailUrl,
+      'images': imageUrls,
+      'createdAt': FieldValue.serverTimestamp(),
+      'uid': eventData['uid'],
+      'type': eventData['type'],
+    });
+
+    return newEventRef.id;
+  } catch (error) {
+    print('Error adding event: $error');
+    return null;
+  }
+}
 
 // TODO: You can add other functions like addEvent and fetchEvents in a similar manner.

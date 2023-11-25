@@ -2,6 +2,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../firebase_functions.dart';
+import '../main_page.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+const backgroundColor = Color(0xFF000000); // black
+const primaryColor = Color(0xFFfaa805); // golden
+const errorColor = Color(0xFFff0000); // red
+const whiteColor = Color(0xFFFFFFFF); // white
+const authContainerBackground = Color(0xFF000000); // black
+const inputBorderColor = Color(0xFFfaa805); // golden
 
 class CreatePost extends StatefulWidget {
   @override
@@ -15,7 +23,7 @@ class _CreatePostState extends State<CreatePost> {
   XFile? _image;
 
   final ImagePicker _picker = ImagePicker();
-
+  List<String> selectedTags = [];
 
   _pickImage({bool useCamera = false}) async {
     XFile? selectedImage = await _picker.pickImage(
@@ -25,11 +33,21 @@ class _CreatePostState extends State<CreatePost> {
     });
   }
 
+
   _handleSubmit() async {
+    final User? currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('User not logged in!')));
+      return;
+    }
+    final String userId = currentUser.uid;
+
     try {
-      if (_forumTitleController.text.isEmpty || _descriptionController.text.isEmpty) {
+      if (_forumTitleController.text.isEmpty ||
+          _descriptionController.text.isEmpty ||
+          selectedTags.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Forum title and description are required!')));
+            SnackBar(content: Text('All fields are required except for the picture!')));
         return;
       }
 
@@ -43,12 +61,11 @@ class _CreatePostState extends State<CreatePost> {
       Map<String, dynamic> postData = {
         'forumTitle': _forumTitleController.text,
         'description': _descriptionController.text,
-        'tags': _tagsController.text.split(',').map((tag) => tag.trim()).toList(), // Assuming comma-separated tags
+        'tags': selectedTags,
         'images': imageFile == null ? [] : [imageFile],  // Use the converted File object here
       };
 
-      // Assuming "your-user-id" is a placeholder. Replace with the actual user ID logic
-      String userId = "your-user-id";
+      // Call the addForumPost function using the fetched userId
       String? postId = await addForumPost(userId, postData);
 
       if (postId != null) {
@@ -61,6 +78,10 @@ class _CreatePostState extends State<CreatePost> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Post created successfully!')));
+
+        // Close the CreatePost and navigate back to the MainPage.
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => MainPage()));
+
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Error creating post!')));
@@ -71,6 +92,81 @@ class _CreatePostState extends State<CreatePost> {
     }
   }
 
+
+  final List<Map<String, String>> tagOptions = [
+    // General
+    { 'value': "professors", 'label': "Professors" },
+    { 'value': "classes", 'label': "Classes" },
+    { 'value': "majors", 'label': "Majors" },
+    { 'value': "clubs", 'label': "Clubs" },
+    { 'value': "restaurants", 'label': "Restaurants" },
+    { 'value': "frats-sororities", 'label': "Frats/Sororities" },
+
+    // Academics
+    { 'value': "study-tips", 'label': "Study Tips" },
+    { 'value': "internships", 'label': "Internships" },
+    { 'value': "academic-challenges", 'label': "Academic Challenges" },
+
+    // Campus Life
+    { 'value': "campus-events", 'label': "Campus Events" },
+    { 'value': "roommate-issues", 'label': "Roommate Issues" },
+    { 'value': "dorm-life", 'label': "Dorm Life" },
+    { 'value': "student-organizations", 'label': "Student Organizations" },
+    { 'value': "sports-athletics", 'label': "Sports and Athletics" },
+    { 'value': "campus-safety", 'label': "Campus Safety" },
+
+    // Wellness
+    { 'value': "mental-health", 'label': "Mental Health" },
+    { 'value': "fitness-health", 'label': "Fitness and Health" },
+
+    // Finance
+    { 'value': "part-time-jobs", 'label': "Part-Time Jobs" },
+    { 'value': "student-loans", 'label': "Student Loans" },
+    { 'value': "student-discounts", 'label': "Student Discounts" },
+    { 'value': "student-budgeting", 'label': "Student Budgeting" },
+
+    // Student Life
+    { 'value': "international-students", 'label': "International Students" },
+    { 'value': "student-housing", 'label': "Student Housing" },
+
+    // Experiences
+    { 'value': "travel-adventure", 'label': "Travel and Adventure" },
+    { 'value': "alumni-stories", 'label': "Alumni Stories" },
+
+    // Creativity
+    { 'value': "art-creativity", 'label': "Art and Creativity" },
+    { 'value': "lgbtq-support", 'label': "LGBTQ+ Support" },
+
+    // Tech & Gadgets
+    { 'value': "technology-gadgets", 'label': "Technology and Gadgets" },
+  ];
+
+  Widget buildTags() {
+    return Wrap(
+      spacing: 8.0,
+      children: List<Widget>.generate(
+        tagOptions.length,
+            (int index) {
+          return ChoiceChip(
+            label: Text(tagOptions[index]['label']!),
+            selected: selectedTags.contains(tagOptions[index]['value']),
+            onSelected: (bool selected) {
+              setState(() {
+                if (selected) {
+                  selectedTags.add(tagOptions[index]['value']!);
+                } else {
+                  selectedTags.removeWhere((String tagValue) {
+                    return tagValue == tagOptions[index]['value'];
+                  });
+                }
+              });
+            },
+            selectedColor: primaryColor, // <- Here's the color change for the tags when they are selected
+          );
+        },
+      ).toList(),
+    );
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -99,14 +195,8 @@ class _CreatePostState extends State<CreatePost> {
               ),
             ),
             SizedBox(height: 20),
-            TextFormField(
-              controller: _tagsController,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: 'Tags (comma separated)',
-                helperText: 'Enter related tags, separated by commas',
-              ),
-            ),
+            Text("Select Tags:"),
+            buildTags(),
             SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -115,11 +205,13 @@ class _CreatePostState extends State<CreatePost> {
                   onPressed: () => _pickImage(),
                   icon: Icon(Icons.photo),
                   label: Text('Select from Gallery'),
+                  style: ElevatedButton.styleFrom(primary: primaryColor,),
                 ),
                 ElevatedButton.icon(
                   onPressed: () => _pickImage(useCamera: true),
                   icon: Icon(Icons.camera_alt),
                   label: Text('Use Camera'),
+                  style: ElevatedButton.styleFrom(primary: primaryColor,),
                 ),
               ],
             ),
@@ -136,9 +228,21 @@ class _CreatePostState extends State<CreatePost> {
               onPressed: _handleSubmit,
               child: Text('Submit'),
               style: ElevatedButton.styleFrom(
-                minimumSize: Size(double.infinity, 50), // double.infinity means it takes full width
+                primary: primaryColor,
+                minimumSize: Size(double.infinity, 50),
               ),
             ),
+            SizedBox(height: 5,),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => MainPage()));
+              },
+              child: Text('Cancel'),
+              style: ElevatedButton.styleFrom(
+                primary: primaryColor,
+                minimumSize: Size(double.infinity, 50),
+              ),
+            )
           ],
         ),
       ),

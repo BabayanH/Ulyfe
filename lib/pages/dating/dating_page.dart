@@ -1,5 +1,11 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_card_swiper/flutter_card_swiper.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+import 'AccountNotSetUp.dart';
+import 'ChatsListWidget.dart';
+import 'MatchedProfilesWidget.dart';
+import 'SwipeableCard.dart';
 
 class DatingPage extends StatefulWidget {
   @override
@@ -7,26 +13,168 @@ class DatingPage extends StatefulWidget {
 }
 
 class _DatingPageState extends State<DatingPage> {
-  List<UserProfile> users = [
-    UserProfile(
-        id: 1,
-        name: 'Davit',
-        image: AssetImage('assets/dav.jpeg'),
-        bio: "I am Davit and I am Autistic"),
-    UserProfile(
-        id: 2,
-        name: 'Hovsep',
-        image: AssetImage('assets/hos.jpeg'),
-        bio: "Howdy I am Hovsep and I am retarded"),
-  ];
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  List<UserProfile> users = [];
+  List<UserProfile> matches = [];
+  bool isLoading = true;
+  UserProfile? lastInteractedUser;
+  String? lastAction;
 
-  int currentIndex = 0;
+  @override
+  void initState() {
+    super.initState();
+    _fetchProfiles();
+  }
 
-  void handleAction(String action) {
-    print('User action: $action on profile ${users[currentIndex].name}');
-    setState(() {
-      currentIndex = (currentIndex + 1) % users.length;
+  String getCurrentUserId() {
+    return FirebaseAuth.instance.currentUser?.uid ?? '';
+  }
+
+  void _fetchProfiles() async {
+    setState(() => isLoading = true);
+
+    try {
+      String currentUserId = getCurrentUserId();
+      var userActionsRef =
+          _firestore.collection('userActions').doc(currentUserId);
+      var userActionsSnapshot = await userActionsRef.get();
+      var userActionsData = userActionsSnapshot.data();
+
+      List<String> interactedUserIds = [];
+      if (userActionsData != null) {
+        interactedUserIds
+            .addAll(List<String>.from(userActionsData['likes'] ?? []));
+        interactedUserIds
+            .addAll(List<String>.from(userActionsData['dislikes'] ?? []));
+        interactedUserIds
+            .addAll(List<String>.from(userActionsData['superlikes'] ?? []));
+      }
+
+      var collection = _firestore.collection('datingProfiles');
+      var querySnapshot = await collection.get();
+      var allProfiles = querySnapshot.docs
+          .map((doc) => UserProfile.fromMap(doc.data() as Map<String, dynamic>))
+          .where((profile) => profile.uid != currentUserId)
+          .toList();
+
+      setState(() {
+        users = allProfiles
+            .where((profile) => !interactedUserIds.contains(profile.uid))
+            .toList();
+        isLoading = false;
+      });
+    } catch (e) {
+      print("Error fetching profiles: $e");
+      setState(() => isLoading = false);
+    }
+  }
+
+  void _handleUserAction(String action, UserProfile user,
+      {bool isReverse = false}) async {
+    String currentUserId = getCurrentUserId();
+    DocumentReference currentUserRef =
+        _firestore.collection('userActions').doc(currentUserId);
+    DocumentReference otherUserRef =
+        _firestore.collection('userActions').doc(user.uid);
+
+    await _firestore.runTransaction((transaction) async {
+      DocumentSnapshot currentUserSnapshot =
+          await transaction.get(currentUserRef);
+      DocumentSnapshot otherUserSnapshot = await transaction.get(otherUserRef);
+
+      Map<String, dynamic> currentUserData = currentUserSnapshot.exists
+          ? currentUserSnapshot.data() as Map<String, dynamic>
+          : {};
+      Map<String, dynamic> otherUserData = otherUserSnapshot.exists
+          ? otherUserSnapshot.data() as Map<String, dynamic>
+          : {};
+
+      List<String> currentUserMatches =
+          List<String>.from(currentUserData['matches'] ?? []);
+      List<String> otherUserMatches =
+          List<String>.from(otherUserData['matches'] ?? []);
+
+      if (!isReverse) {
+        List<String> updatedActions =
+            List<String>.from(currentUserData[action] ?? []);
+        if (!updatedActions.contains(user.uid)) {
+          updatedActions.add(user.uid);
+          currentUserData[action] = updatedActions;
+          transaction.set(currentUserRef, currentUserData);
+        }
+
+        if ((action == 'likes' || action == 'superlikes') &&
+            List<String>.from(otherUserData['likes'] ?? [])
+                .contains(currentUserId)) {
+          if (!currentUserMatches.contains(user.uid)) {
+            currentUserMatches.add(user.uid);
+            currentUserData['matches'] = currentUserMatches;
+            transaction.set(currentUserRef, currentUserData);
+          }
+
+          if (!otherUserMatches.contains(currentUserId)) {
+            otherUserMatches.add(currentUserId);
+            otherUserData['matches'] = otherUserMatches;
+            transaction.set(otherUserRef, otherUserData);
+          }
+        }
+      } else {
+        if (currentUserMatches.contains(user.uid) ||
+            otherUserMatches.contains(currentUserId)) {
+          // Do not allow reverse if they have already matched
+          return;
+        }
+
+        currentUserData['likes'] =
+            List<String>.from(currentUserData['likes'] ?? [])
+                .where((id) => id != user.uid)
+                .toList();
+        currentUserData['dislikes'] =
+            List<String>.from(currentUserData['dislikes'] ?? [])
+                .where((id) => id != user.uid)
+                .toList();
+        currentUserData['superlikes'] =
+            List<String>.from(currentUserData['superlikes'] ?? [])
+                .where((id) => id != user.uid)
+                .toList();
+        transaction.set(currentUserRef, currentUserData);
+      }
     });
+
+    if (!isReverse) {
+      setState(() {
+        users.remove(user);
+        lastInteractedUser = user;
+        lastAction = action;
+      });
+    }
+  }
+
+  // Implement a method to handle the reverse action
+  void _onReverse() async {
+    if (lastInteractedUser != null && lastAction != null) {
+      String currentUserId = getCurrentUserId();
+      DocumentReference userActionsRef =
+          _firestore.collection('userActions').doc(currentUserId);
+      DocumentSnapshot userActionsSnapshot = await userActionsRef.get();
+      Map<String, dynamic> userActionsData =
+          userActionsSnapshot.data() as Map<String, dynamic> ?? {};
+
+      // Correctly cast the matches list
+      List<String> matchIds =
+          List<String>.from(userActionsData['matches'] ?? []);
+
+      // Check if the last interacted user is in the matches list
+      if (!matchIds.contains(lastInteractedUser!.uid)) {
+        _handleUserAction(lastAction!, lastInteractedUser!, isReverse: true);
+        setState(() {
+          users.add(lastInteractedUser!);
+        });
+      } else {
+        // Optionally, show a message that the action can't be reversed due to a match
+        print("Action can't be reversed as you've matched with this user.");
+      }
+    }
   }
 
   @override
@@ -34,116 +182,45 @@ class _DatingPageState extends State<DatingPage> {
     return DefaultTabController(
       length: 3,
       child: Scaffold(
+        backgroundColor: Color(0xFF111111),
         appBar: AppBar(
-          backgroundColor: Color(0xFF0557FA),
-          title: TabBar(
+          backgroundColor: Colors.black,
+          bottom: TabBar(
+            labelColor: Colors.orange, // Replace with your primaryColor
+            unselectedLabelColor: Colors.white,
             tabs: [
-              Tab(text: 'Lynks'),
               Tab(text: 'People'),
+              Tab(text: 'Lynks'),
               Tab(text: 'Chats'),
             ],
+            indicatorColor: Colors.orange, // Replace with your primaryColor
           ),
         ),
         body: TabBarView(
           children: [
-            // Likes Tab
-            Center(child: Text('Lynk Tab ')),
-
-            // Matches Tab
             Center(
-              child: Column(
-                children: [
-                  Expanded(
-                    child: CardSwiper(
-                      cardsCount: users.length,
-                      cardBuilder: (context, index, percentThresholdX,
-                          percentThresholdY) {
-                        final user = users[index];
-                        return Container(
-                          alignment: Alignment.center,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                width: 400,
-                                height: 530,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(10),
-                                  image: DecorationImage(
-                                    fit: BoxFit.cover,
-                                    image: user.image,
-                                  ),
-                                ),
-                                child: Stack(
-                                  children: [
-                                    Positioned(
-                                      bottom: 20,
-                                      left: 20,
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            user.name,
-                                            style: TextStyle(
-                                              fontSize: 24,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                          Text(
-                                            user.bio,
-                                            style: TextStyle(
-                                              fontSize: 16,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      IconButton(
-                        icon: Icon(Icons.close),
-                        onPressed: () => handleAction('dislike'),
-                        color: Colors.red,
-                        iconSize: 40,
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.arrow_back),
-                        onPressed: () => handleAction('back'),
-                        color: Colors.yellow,
-                        iconSize: 40,
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.star),
-                        onPressed: () => handleAction('superlike'),
-                        color: Colors.blue,
-                        iconSize: 40,
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.favorite),
-                        onPressed: () => handleAction('like'),
-                        color: Colors.green,
-                        iconSize: 40,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+              child: isLoading
+                  ? CircularProgressIndicator()
+                  : users.isNotEmpty
+                      ? Stack(
+                          children: users.map((user) {
+                            return SwipeableCard(
+                              userProfile: user,
+                              onSwipeLeft: () =>
+                                  _handleUserAction('dislikes', user),
+                              onSwipeRight: () =>
+                                  _handleUserAction('likes', user),
+                              onSuperlike: () =>
+                                  _handleUserAction('superlikes', user),
+                              onReverse: _onReverse, // Implement this
+                            );
+                          }).toList(),
+                        )
+                      : Text('No more profiles. Come back later',
+                          style: TextStyle(color: Colors.white)),
             ),
-
-            // Messages Tab
-            Center(child: Text('Chats Tab ')),
+            MatchedProfilesWidget(),
+            ChatsListWidget(),
           ],
         ),
       ),
@@ -152,15 +229,39 @@ class _DatingPageState extends State<DatingPage> {
 }
 
 class UserProfile {
-  final int id;
-  final String name;
-  final ImageProvider image;
+  final String age;
   final String bio;
+  final String gender;
+  final String hobbies;
+  final List<String> profileImages;
+  final String race;
+  final String uid;
+  final String major; // Assuming these fields can be null
+  final String graduationYear;
 
   UserProfile({
-    required this.id,
-    required this.name,
-    required this.image,
+    required this.age,
     required this.bio,
+    this.gender = '',
+    required this.hobbies,
+    required this.profileImages,
+    this.race = '',
+    required this.uid,
+    this.major = '',
+    this.graduationYear = '',
   });
+
+  factory UserProfile.fromMap(Map<String, dynamic> data) {
+    return UserProfile(
+      age: data['age'] ?? '',
+      bio: data['bio'] ?? '',
+      gender: data['gender'] ?? '',
+      hobbies: data['hobbies'] ?? '',
+      profileImages: List<String>.from(data['profileImages'] ?? []),
+      race: data['race'] ?? '',
+      uid: data['uid'] ?? '',
+      major: data['major'] ?? '',
+      graduationYear: data['graduationYear'] ?? '',
+    );
+  }
 }
